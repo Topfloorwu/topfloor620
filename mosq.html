@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>AI蚊蟲毀滅裝置</title>
+  <style>
+    body { background: #f8f8ff; font-family: 'Segoe UI', '微軟正黑體', sans-serif; text-align: center; }
+    .centerbox {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 60vh;
+    }
+    .radar {
+      position: relative;
+      width: 420px; height: 420px;
+      margin: 0 auto 30px auto;
+      background: radial-gradient(circle at 50% 60%, #fffbe9 60%, #ffe8e8 100%);
+      border-radius: 50%;
+      box-shadow: 0 0 60px #ffe066, 0 0 0 16px #fffbe9 inset;
+      overflow: visible;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .lightning-svg {
+      position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      width: 120px; height: 200px;
+      z-index: 2;
+      filter: drop-shadow(0 0 30px #ffe06688);
+      animation: flash 1.2s infinite alternate;
+    }
+    @keyframes flash {
+      0% { filter: drop-shadow(0 0 10px #ffe06688); opacity: 1; }
+      100% { filter: drop-shadow(0 0 40px #ffe066cc); opacity: 0.85; }
+    }
+    .radar-scan {
+      position: absolute; left: 50%; top: 50%;
+      width: 390px; height: 390px;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: conic-gradient(rgba(0,255,255,0.2) 0deg, rgba(0,255,255,0.2) 60deg, transparent 60deg 360deg);
+      animation: scan 2s linear infinite;
+      z-index: 1;
+    }
+    @keyframes scan {
+      0% { transform: translate(-50%, -50%) rotate(0deg); }
+      100% { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+    .mosquito {
+      position: absolute;
+      width: 48px; height: 48px;
+      z-index: 3;
+      animation: fly 4s linear infinite;
+    }
+    .mosquito.m1 { left: 40px; top: 80px; animation-delay: 0s; }
+    .mosquito.m2 { left: 320px; top: 60px; animation-delay: 1s; }
+    .mosquito.m3 { left: 80px; top: 320px; animation-delay: 2s; }
+    .mosquito.m4 { left: 300px; top: 300px; animation-delay: 3s; }
+    @keyframes fly {
+      0% { transform: scale(1) rotate(0deg); }
+      50% { transform: scale(1.1) rotate(10deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+    .status { font-size: 2em; margin: 30px; }
+    .desc { color: #888; margin-bottom: 20px; }
+    button { padding: 12px 30px; font-size: 1.2em; border-radius: 20px; background: #6cf; color: #fff; border: none; margin: 20px; cursor: pointer; }
+    button:hover { background: #39c; }
+    .hide { display: none; }
+  </style>
+</head>
+<body>
+  <h2>AI蚊蟲毀滅裝置</h2>
+  <div class="desc">目前戰績:<span id="touchValue" style="color:#39c;font-weight:bold;margin-left:10px;">0</span></div>
+  <div id="mosquitoArea" style="margin: 20px 0;"></div>
+  <button id="connectBtn" style="font-size:1.3em;background:#28a745;margin-top:30px;">連接 Arduino 裝置</button>
+  <div id="connectStatus" style="color:#d00;margin-top:10px;"></div>
+  <div id="mainBox" class="hide">
+    <div>
+      <span id="redLed" class="led"></span>
+      <span id="yellowLed1" class="led"></span>
+      <span id="yellowLed2" class="led"></span>
+    </div>
+  </div>
+  <script>
+    let port, reader;
+    let hitCount = 0;
+    let mosquitoCount = 4;
+    let isDeadAnim = false;
+    let lastTouch = false;
+    // 蚊子動畫HTML片段
+    const mosquitoHTML = `
+      <div class="radar" id="radarBox">
+        <svg class="lightning-svg" viewBox="0 0 80 160">
+          <polygon points="40,10 70,70 50,70 65,110 35,110 50,150 20,90 40,90 25,50 55,50" fill="#ffe066" stroke="#ffb300" stroke-width="6"/>
+          <polyline points="40,20 65,75 50,75 60,105 38,105 52,145" fill="none" stroke="#fffde7" stroke-width="4" opacity="0.7"/>
+        </svg>
+        <div class="radar-scan"></div>
+        <svg class="mosquito m1" viewBox="0 0 40 40"><ellipse cx="20" cy="25" rx="8" ry="10" fill="#222"/><ellipse cx="14" cy="12" rx="2" ry="8" fill="#888" transform="rotate(-30 14 12)"/><ellipse cx="26" cy="12" rx="2" ry="8" fill="#888" transform="rotate(30 26 12)"/><ellipse cx="20" cy="35" rx="3" ry="2" fill="#fff"/><circle cx="17" cy="23" r="2" fill="#fff"/><circle cx="23" cy="23" r="2" fill="#fff"/><ellipse cx="20" cy="10" rx="2" ry="4" fill="#222"/></svg>
+        <svg class="mosquito m2" viewBox="0 0 40 40"><ellipse cx="20" cy="25" rx="8" ry="10" fill="#222"/><ellipse cx="14" cy="12" rx="2" ry="8" fill="#888" transform="rotate(-30 14 12)"/><ellipse cx="26" cy="12" rx="2" ry="8" fill="#888" transform="rotate(30 26 12)"/><ellipse cx="20" cy="35" rx="3" ry="2" fill="#fff"/><circle cx="17" cy="23" r="2" fill="#fff"/><circle cx="23" cy="23" r="2" fill="#fff"/><ellipse cx="20" cy="10" rx="2" ry="4" fill="#222"/></svg>
+        <svg class="mosquito m3" viewBox="0 0 40 40"><ellipse cx="20" cy="25" rx="8" ry="10" fill="#222"/><ellipse cx="14" cy="12" rx="2" ry="8" fill="#888" transform="rotate(-30 14 12)"/><ellipse cx="26" cy="12" rx="2" ry="8" fill="#888" transform="rotate(30 26 12)"/><ellipse cx="20" cy="35" rx="3" ry="2" fill="#fff"/><circle cx="17" cy="23" r="2" fill="#fff"/><circle cx="23" cy="23" r="2" fill="#fff"/><ellipse cx="20" cy="10" rx="2" ry="4" fill="#222"/></svg>
+        <svg class="mosquito m4" viewBox="0 0 40 40"><ellipse cx="20" cy="25" rx="8" ry="10" fill="#222"/><ellipse cx="14" cy="12" rx="2" ry="8" fill="#888" transform="rotate(-30 14 12)"/><ellipse cx="26" cy="12" rx="2" ry="8" fill="#888" transform="rotate(30 26 12)"/><ellipse cx="20" cy="35" rx="3" ry="2" fill="#fff"/><circle cx="17" cy="23" r="2" fill="#fff"/><circle cx="23" cy="23" r="2" fill="#fff"/><ellipse cx="20" cy="10" rx="2" ry="4" fill="#222"/></svg>
+      </div>
+    `;
+    document.getElementById('mosquitoArea').innerHTML = mosquitoHTML;
+    let mosquitoSvgs = [
+      document.querySelector('.mosquito.m1'),
+      document.querySelector('.mosquito.m2'),
+      document.querySelector('.mosquito.m3'),
+      document.querySelector('.mosquito.m4')
+    ];
+    document.getElementById('connectBtn').onclick = async () => {
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600 });
+        reader = port.readable.getReader();
+        document.getElementById('connectBtn').style.display = 'none';
+        document.getElementById('connectStatus').textContent = '已成功連接 Arduino！';
+        mainBox.classList.remove('hide');
+        document.getElementById('mainBox').insertAdjacentHTML('afterbegin', document.getElementById('mosquitoArea').innerHTML);
+        document.getElementById('mosquitoArea').innerHTML = '';
+        mosquitoSvgs = [
+          document.querySelector('.mosquito.m1'),
+          document.querySelector('.mosquito.m2'),
+          document.querySelector('.mosquito.m3'),
+          document.querySelector('.mosquito.m4')
+        ];
+        readSerial();
+      } catch (e) {
+        document.getElementById('connectStatus').textContent = '連線失敗，請確認裝置已插入並支援 Web Serial。';
+      }
+    };
+    async function readSerial() {
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += new TextDecoder().decode(value);
+        let lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (let line of lines) {
+          if (line.trim() === '9999') {
+            hitCount++;
+            document.getElementById('touchValue').textContent = hitCount;
+            if (isDeadAnim) continue;
+            if (mosquitoSvgs && mosquitoCount > 0 && mosquitoSvgs[mosquitoCount-1]) {
+              mosquitoSvgs[mosquitoCount-1].style.display = 'none';
+              mosquitoCount--;
+              const radar = document.getElementById('radarBox');
+              const deadBox = document.getElementById('deadMosquitoBox');
+              if (radar && deadBox) {
+                radar.style.display = 'none';
+                deadBox.style.display = 'block';
+                isDeadAnim = true;
+                setTimeout(() => {
+                  deadBox.style.display = 'none';
+                  radar.style.display = 'flex';
+                  isDeadAnim = false;
+                }, 2000);
+              }
+            }
+            continue;
+          }
+          let val = parseInt(line.trim());
+          if (isNaN(val)) continue;
+          // ...其餘數值不處理...
+        }
+      }
+    }
+  </script>
+</body>
+</html>
